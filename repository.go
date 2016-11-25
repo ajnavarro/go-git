@@ -264,6 +264,51 @@ func (r *Repository) Pull(o *PullOptions) error {
 	return r.createReferences(head)
 }
 
+func (r *Repository) Push(o *PushOptions) error {
+	if err := o.Validate(); err != nil {
+		return err
+	}
+
+	remote, err := r.Remote(o.RemoteName)
+	if err != nil {
+		return err
+	}
+
+	if err := remote.Connect(); err != nil {
+		return err
+	}
+
+	defer remote.Disconnect()
+
+	info := remote.Info()
+
+	refsIter, err := r.Refs()
+	if err != nil {
+		return err
+	}
+
+	err = refsIter.ForEach(func(r *plumbing.Reference) error {
+		for _, rs := range o.RefSpecs {
+			if rs.Match(r.Name()) {
+				nr := plumbing.NewHashReference(
+					rs.Dst(r.Name()),
+					r.Hash(),
+				)
+				// TODO get references from remote
+				// TODO calculate diffs between commits
+				// TODO create packfile
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Commit return the commit with the given hash
 func (r *Repository) Commit(h plumbing.Hash) (*Commit, error) {
 	commit, err := r.Object(plumbing.CommitObject, h)

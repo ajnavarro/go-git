@@ -76,6 +76,20 @@ func (o *PullOptions) Validate() error {
 	return nil
 }
 
+type PushOptions struct {
+	RefSpecs []config.RefSpec
+	// Name of the remote to be pushed
+	RemoteName string
+}
+
+func (o *PushOptions) Validate() error {
+	if o.RemoteName == "" {
+		o.RemoteName = DefaultRemoteName
+	}
+
+	return nil
+}
+
 // FetchOptions describe how a fetch should be perform
 type FetchOptions struct {
 	RefSpecs []config.RefSpec
