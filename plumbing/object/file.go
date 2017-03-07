@@ -60,6 +60,37 @@ func (f *File) Lines() ([]string, error) {
 	return splits, nil
 }
 
+// IsBinary returns if the file is a binary one or just plain text otherwise.
+func (f *File) IsBinary() (bool, error) {
+	reader, err := f.Reader()
+	if err != nil {
+		return false, err
+	}
+	defer ioutil.CheckClose(reader, &err)
+
+	buf := bytes.NewBuffer(nil)
+
+	if _, err := buf.ReadFrom(reader); err != nil {
+		return false, err
+	}
+
+	for {
+		b, err := buf.ReadByte()
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if b == '\x00' {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+
 // FileIter provides an iterator for the files in a tree.
 type FileIter struct {
 	s storer.EncodedObjectStorer

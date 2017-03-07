@@ -218,6 +218,22 @@ func (c *Commit) String() string {
 	)
 }
 
+// Diff returns a list of Changes existing into the files of this commit and the
+// provided one
+func (from *Commit) Diff(to *Commit) (Changes, error) {
+	fromTree, err := from.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	toTree, err := to.Tree()
+	if err != nil {
+		return nil, err
+	}
+
+	return DiffTree(fromTree, toTree)
+}
+
 func indent(t string) string {
 	var output []string
 	for _, line := range strings.Split(t, "\n") {

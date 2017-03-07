@@ -1,11 +1,17 @@
 package object
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
+	"path/filepath"
 	"strings"
 
+	"srcd.works/go-git.v4/plumbing"
 	"srcd.works/go-git.v4/utils/merkletrie"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // Change values represent a detected change between two git trees.  For
@@ -59,6 +65,87 @@ func (c *Change) Files() (from, to *File, err error) {
 	}
 
 	return
+}
+
+// WritePatchTo writes the generated Patch of this change to the specified Writer
+func (c *Change) WritePatchTo(w io.Writer) error {
+	from, to, err := c.Files()
+	if err != nil {
+		return err
+	}
+
+	buf := bufio.NewWriter(w)
+
+	if err := c.diffHeader(buf); err != nil {
+		return err
+	}
+
+	isBinary, err := c.printIfBinaryPatch(buf, from, to)
+	if isBinary || err != nil {
+		return err
+	}
+
+	if err := extendedHeaders(buf, from, to); err != nil {
+		return err
+	}
+
+	buf.WriteString(fmt.Sprintf("--- %s\n", c.filePath("a", from)))
+	buf.WriteString(fmt.Sprintf("+++ %s\n", c.filePath("b", to)))
+
+	fc, err := content(from)
+	if err != nil {
+		return err
+	}
+
+	tc, err := content(to)
+	if err != nil {
+		return err
+	}
+
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(fc, tc, false)
+
+	diffBuf := bytes.NewBuffer(nil)
+	lenDiffs := len(diffs)
+	for iDiff, diff := range diffs {
+		//buf.WriteString(fmt.Sprintf("@@ -%s +%s @@\n", range1, range2))
+		lines := strings.Split(diff.Text, "\n")
+		lenLines := len(lines)
+		for iLine, line := range lines {
+			if lenDiffs == iDiff+1 && lenLines == iLine+1 && line == "" {
+				if line == "" {
+					break
+				} else {
+					// TODO no new line at the end of the file
+				}
+			}
+			switch diff.Type {
+			case diffmatchpatch.DiffInsert:
+				diffBuf.WriteString(fmt.Sprintf("+%s\n", line))
+			case diffmatchpatch.DiffDelete:
+				diffBuf.WriteString(fmt.Sprintf("-%s\n", line))
+			case diffmatchpatch.DiffEqual:
+				diffBuf.WriteString(fmt.Sprintf(" %s\n", line))
+			}
+		}
+	}
+
+	// TODO print @@
+
+	_, err = buf.ReadFrom(diffBuf)
+
+	return err
+}
+
+
+func (c Change) Patch() (string, error) {
+	buf := bytes.NewBuffer(nil)
+
+	if err := c.WritePatchTo(buf); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
 }
 
 func (c *Change) String() string {
@@ -117,4 +204,26 @@ func (c Changes) String() string {
 	buffer.WriteString("]")
 
 	return buffer.String()
+}
+
+// WritePatchTo writes the generated Patch of this changes to the specified Writer
+func (c Changes) WritePatchTo(w io.Writer) error {
+	buf := bufio.NewWriter(w)
+	for _, change := range c {
+		if err := change.WritePatchTo(buf); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Patch returns a string that represent all the patches of this groups of changes
+func (c Changes) Patch() (string, error) {
+	buf := bytes.NewBuffer(nil)
+	if err := c.WritePatchTo(buf); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
 }

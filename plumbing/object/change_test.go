@@ -2,6 +2,7 @@ package object
 
 import (
 	"sort"
+	"fmt"
 
 	"srcd.works/go-git.v4/plumbing"
 	"srcd.works/go-git.v4/plumbing/filemode"
@@ -77,6 +78,11 @@ func (s *ChangeSuite) TestInsert(c *C) {
 
 	str := change.String()
 	c.Assert(str, Equals, "<Action: Insert, Path: examples/clone/main.go>")
+
+	p, err := change.Patch()
+	c.Assert(err, IsNil)
+	fmt.Println(p)
+	//c.Assert(p, DeepEquals, diffInsert)
 }
 
 func (s *ChangeSuite) TestDelete(c *C) {
@@ -123,6 +129,11 @@ func (s *ChangeSuite) TestDelete(c *C) {
 
 	str := change.String()
 	c.Assert(str, Equals, "<Action: Delete, Path: utils/difftree/difftree.go>")
+
+	//// TODO check diff result
+	//p, err := change.Patch()
+	//c.Assert(err, IsNil)
+	//fmt.Println(p)
 }
 
 func (s *ChangeSuite) TestModify(c *C) {
@@ -183,6 +194,11 @@ func (s *ChangeSuite) TestModify(c *C) {
 
 	str := change.String()
 	c.Assert(str, Equals, "<Action: Modify, Path: utils/difftree/difftree.go>")
+
+	//// TODO check diff result
+	//p, err := change.Patch()
+	//c.Assert(err, IsNil)
+	//fmt.Println(p)
 }
 
 func (s *ChangeSuite) TestEmptyChangeFails(c *C) {
@@ -297,3 +313,96 @@ func (s *ChangeSuite) TestChangesSort(c *C) {
 	sort.Sort(changes)
 	c.Assert(changes.String(), Equals, expected)
 }
+
+// TODO file modes added a 0 before the number
+// TODO short hashes not supported
+var diffInsert = `diff --git a/examples/clone/main.go b/examples/clone/main.go
+new file mode 0100644
+index 0000000000000000000000000000000000000000..f95dc8f7923add1a8b9f72ecb1e8db1402de601a
+--- /dev/null
++++ b/examples/clone/main.go
+@@ -0,0 +1,84 @@
++package main
++
++import (
++	"io"
++	"os"
++	"path/filepath"
++
++	"github.com/fatih/color"
++
++	"gopkg.in/src-d/go-git.v4"
++)
++
++func main() {
++	checkArgs()
++	url := os.Args[1]
++	directory := os.Args[2]
++
++	r := git.NewMemoryRepository()
++
++	// Clone the given repository, using depth we create a shallow clone :
++	// > git clone <url> --depth 1
++	color.Blue("git clone %s --depth 1 %s", url, directory)
++
++	err := r.Clone(&git.CloneOptions{
++		URL:   url,
++		Depth: 1,
++	})
++	checkIfError(err)
++
++	// ... retrieving the branch being pointed by HEAD
++	ref, err := r.Head()
++	checkIfError(err)
++	// ... retrieving the commit object
++	commit, err := r.Commit(ref.Hash())
++	checkIfError(err)
++
++	// ... we get all the files from the commit
++	files, err := commit.Files()
++	checkIfError(err)
++
++	// ... now we iterate the files to save to disk
++	err = files.ForEach(func(f *git.File) error {
++		abs := filepath.Join(directory, f.Name)
++		dir := filepath.Dir(abs)
++
++		os.MkdirAll(dir, 0777)
++		file, err := os.Create(abs)
++		if err != nil {
++			return err
++		}
++
++		defer file.Close()
++		r, err := f.Reader()
++		if err != nil {
++			return err
++		}
++
++		defer r.Close()
++
++		if err := file.Chmod(f.Mode); err != nil {
++			return err
++		}
++
++		_, err = io.Copy(file, r)
++		return err
++	})
++	checkIfError(err)
++}
++
++func checkIfError(err error) {
++	if err == nil {
++		return
++	}
++
++	color.Red("error: %s", err)
++	os.Exit(1)
++}
++
++func checkArgs() {
++	if len(os.Args) < 3 {
++		color.Cyan("Usage: %s <url> <directory>", os.Args[0])
++		os.Exit(1)
++	}
++}`
